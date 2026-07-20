@@ -1,0 +1,9 @@
+# Core runtime
+google-genai>=1.0.0        # Official Google Gen AI SDK (import: `from google import genai`)
+streamlit>=1.30.0          # UI
+pydantic>=2.5.0            # Strict transcript validation
+python-dotenv>=1.0.0       # Load GEMINI_API_KEY from .env
+pandas>=2.0.0             # Editable transcript table (st.data_editor)
+
+# Testing
+pytest>=7.4.0

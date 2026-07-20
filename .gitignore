@@ -1,0 +1,39 @@
+# --- Secrets ---
+.env
+*.env
+!.env.example
+
+# --- Generated media / working files (never commit) ---
+temp/
+outputs/
+*.mp4
+*.mov
+*.webm
+*.mkv
+*.avi
+*.m4v
+*.srt
+*.vtt
+transcript.json
+# keep the folder placeholders
+!temp/.gitkeep
+!outputs/.gitkeep
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
