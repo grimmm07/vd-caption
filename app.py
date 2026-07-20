@@ -8,11 +8,22 @@ from __future__ import annotations
 
 import base64
 import math
+import os
 from pathlib import Path
 
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
+
+# On Streamlit Community Cloud / HF Spaces, secrets are exposed via st.secrets
+# rather than environment variables. Bridge them into the environment so the
+# existing os.getenv-based config picks them up. Must run before get_settings().
+try:
+    for _key in ("GEMINI_API_KEY", "GEMINI_MODEL", "MAX_UPLOAD_MB", "DEBUG"):
+        if _key not in os.environ and _key in st.secrets:
+            os.environ[_key] = str(st.secrets[_key])
+except Exception:  # no secrets file present (e.g. local run) — that's fine
+    pass
 
 from config import SUPPORTED_VIDEO_TYPES, get_settings
 from models.transcript import Segment, Transcript

@@ -1,0 +1,12 @@
+# Streamlit server configuration (used locally and on Streamlit Community Cloud).
+[server]
+# Max upload size in MB. Keep modest on free hosting — video encoding is
+# memory/CPU heavy and large uploads can exhaust a small instance.
+maxUploadSize = 200
+headless = true
+
+[browser]
+gatherUsageStats = false
+
+[theme]
+base = "dark"

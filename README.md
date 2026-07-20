@@ -273,7 +273,53 @@ JSON, quota error).
 
 ---
 
-## 13. Future batch-processing approach (all ~450 videos)
+## 13. Deployment
+
+**Vercel / Netlify / serverless will NOT work.** This is a Streamlit app: it
+needs a *persistent* server process with WebSockets, plus the **FFmpeg system
+binary** for rendering. Serverless Python runtimes expect a WSGI/ASGI
+`app`/`handler` export (which Streamlit does not provide) and cannot run FFmpeg.
+That is the cause of the `Found app.py but it does not export a top-level "app"`
+error.
+
+Use a host that runs a long-lived container/process:
+
+### Streamlit Community Cloud (recommended, free)
+
+1. Push this repo to GitHub (done: `grimmm07/vd-caption`).
+2. Go to <https://share.streamlit.io> → **New app** → pick the repo/branch and
+   set the main file to `app.py`.
+3. FFmpeg is installed automatically from **`packages.txt`** (already in the
+   repo).
+4. Add your key under **Settings → Secrets** (TOML), e.g.:
+   ```toml
+   GEMINI_API_KEY = "your-key"
+   GEMINI_MODEL = "gemini-2.5-flash"
+   MAX_UPLOAD_MB = "200"
+   ```
+   The app bridges `st.secrets` into env vars automatically.
+
+### Other options
+
+- **Hugging Face Spaces** (Streamlit SDK) — also reads `packages.txt`; set the
+  key as a Space secret.
+- **Render / Railway / Fly.io / any Docker host** — run
+  `streamlit run app.py --server.port $PORT --server.address 0.0.0.0`; install
+  FFmpeg in the image (`apt-get install -y ffmpeg`).
+
+### ⚠️ Before you deploy publicly
+
+- **Cost & key exposure:** anyone with the URL can upload videos and spend your
+  paid Gemini quota under *your* key. Put it behind auth, or keep it internal.
+- **Resources:** video re-encoding is CPU/memory heavy. Free tiers (~1 GB RAM,
+  short timeouts) may be slow or OOM on longer/HD videos. The inline synced
+  preview also embeds the video in the page (40 MB cap).
+- For the actual **450-video batch job**, running **locally** (or as the batch
+  CLI described below) is cheaper and more reliable than a public web app.
+
+---
+
+## 14. Future batch-processing approach (all ~450 videos)
 
 The `GeminiTranscriber.transcribe()` method already takes a single path and
 returns a validated `Transcript`, so a batch driver is a thin wrapper:
