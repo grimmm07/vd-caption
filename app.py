@@ -451,18 +451,39 @@ if st.session_state.get("segments_df") is not None:
             st.success("Subtitle files generated.")
 
     with col_b:
-        burn_disabled = not (valid and ffmpeg_status.ok)
+        render_disabled = not (valid and ffmpeg_status.ok)
         _auto_size = font_size_for_height(_meta.height if _meta else None)
-        caption_size = st.slider(
-            "Caption font size",
-            min_value=10,
-            max_value=48,
-            value=int(_auto_size),
-            help="Auto-sized for this video's height; lower it if captions cover "
-            "too much of the frame.",
+
+        _BURNED = "Burned-in (permanent)"
+        _SOFT = "Selectable — viewer can turn on/off"
+        _BOTH = "Both"
+        caption_type = st.radio(
+            "Captioned video type",
+            [_BURNED, _SOFT, _BOTH],
+            help=(
+                "Burned-in: captions are permanently drawn into the picture. "
+                "Selectable: captions are a separate subtitle track the viewer "
+                "can turn on or off in players that support it (VLC, QuickTime, "
+                "most TVs/phones). Note: some in-browser players don't show the "
+                "toggle — download the file to add/remove captions there."
+            ),
         )
-        make_soft = st.checkbox("Also create a selectable subtitle track (optional)")
-        if st.button("🎞️ Generate captioned video", disabled=burn_disabled):
+        want_burned = caption_type in (_BURNED, _BOTH)
+        want_soft = caption_type in (_SOFT, _BOTH)
+
+        if want_burned:
+            caption_size = st.slider(
+                "Caption font size",
+                min_value=10,
+                max_value=48,
+                value=int(_auto_size),
+                help="Auto-sized for this video's height; lower it if captions "
+                "cover too much of the frame.",
+            )
+        else:
+            caption_size = int(_auto_size)
+
+        if st.button("🎞️ Generate captioned video", disabled=render_disabled):
             transcript = _validated_transcript()
             work = Path(st.session_state["work_dir"])
             srt_path = work / "captions.srt"
@@ -476,35 +497,36 @@ if st.session_state.get("segments_df") is not None:
             st.session_state["outputs"].update(
                 {"srt": str(srt_path), "vtt": str(vtt_path), "json": str(json_path)}
             )
+            # Drop any stale rendered videos so Step 5 reflects this run only.
+            st.session_state["outputs"].pop("burned", None)
+            st.session_state["outputs"].pop("soft", None)
 
-            out_burned = work / "captioned.mp4"
-            bar = st.progress(0.0, text="Rendering burned-in captions…")
             try:
-                burn_captions(
-                    st.session_state["video_path"],
-                    srt_path,
-                    out_burned,
-                    metadata=st.session_state.get("metadata"),
-                    font_size=caption_size,
-                    progress_callback=lambda p: bar.progress(
-                        p, text=f"Rendering… {p * 100:.0f}%"
-                    ),
-                )
-                st.session_state["outputs"]["burned"] = str(out_burned)
-                st.success("Captioned video ready.")
+                if want_burned:
+                    out_burned = work / "captioned.mp4"
+                    bar = st.progress(0.0, text="Rendering burned-in captions…")
+                    burn_captions(
+                        st.session_state["video_path"],
+                        srt_path,
+                        out_burned,
+                        metadata=st.session_state.get("metadata"),
+                        font_size=caption_size,
+                        progress_callback=lambda p: bar.progress(
+                            p, text=f"Rendering… {p * 100:.0f}%"
+                        ),
+                    )
+                    st.session_state["outputs"]["burned"] = str(out_burned)
 
-                if make_soft:
+                if want_soft:
                     out_soft = work / "captioned_soft.mp4"
-                    try:
+                    with st.spinner("Muxing selectable subtitle track…"):
                         mux_soft_subtitles(
                             st.session_state["video_path"], srt_path, out_soft
                         )
-                        st.session_state["outputs"]["soft"] = str(out_soft)
-                        st.info("Selectable-subtitle version also created.")
-                    except FFmpegError as exc:
-                        st.warning(f"Soft-subtitle track failed (optional): {exc}")
+                    st.session_state["outputs"]["soft"] = str(out_soft)
+
+                st.success("Captioned video ready.")
             except FFmpegError as exc:
-                bar.empty()
                 st.error(f"❌ FFmpeg failed: {exc}")
 
 
@@ -514,15 +536,102 @@ if st.session_state.get("segments_df") is not None:
 outputs = st.session_state.get("outputs", {})
 if outputs:
     st.header("5 · Preview & download")
+
+    # Preview the burned-in video if present (captions are visible in-browser);
+    # otherwise preview the selectable-track video.
     if outputs.get("burned"):
         st.video(outputs["burned"])
+    elif outputs.get("soft"):
+        st.video(outputs["soft"])
+        st.caption(
+            "This file has a **selectable** subtitle track. In-browser players "
+            "may not show captions or a toggle — download it and open in VLC / "
+            "QuickTime / your phone to turn captions on or off."
+        )
 
     dl_cols = st.columns(4)
     if outputs.get("burned"):
         with dl_cols[0]:
             st.download_button(
-                "⬇️ Captioned video (MP4)",
+                "⬇️ Video (burned-in)",
                 data=Path(outputs["burned"]).read_bytes(),
                 file_name="captioned.mp4",
                 mime="video/mp4",
             )
+    if outputs.get("srt"):
+        with dl_cols[1]:
+            st.download_button(
+                "⬇️ SRT",
+                data=Path(outputs["srt"]).read_text(encoding="utf-8"),
+                file_name="captions.srt",
+                mime="application/x-subrip",
+            )
+    if outputs.get("vtt"):
+        with dl_cols[2]:
+            st.download_button(
+                "⬇️ WebVTT",
+                data=Path(outputs["vtt"]).read_text(encoding="utf-8"),
+                file_name="captions.vtt",
+                mime="text/vtt",
+            )
+    if outputs.get("json"):
+        with dl_cols[3]:
+            st.download_button(
+                "⬇️ Transcript JSON",
+                data=Path(outputs["json"]).read_text(encoding="utf-8"),
+                file_name="transcript.json",
+                mime="application/json",
+            )
+    if outputs.get("soft"):
+        st.download_button(
+            "⬇️ Video with selectable captions (viewer can add/remove)",
+            data=Path(outputs["soft"]).read_bytes(),
+            file_name="captioned_selectable.mp4",
+            mime="video/mp4",
+        )
+
+
+# --------------------------------------------------------------------------
+# Batch cost & quota estimator
+# --------------------------------------------------------------------------
+st.divider()
+st.header("📊 Batch cost & quota estimator")
+st.caption(
+    "Plan the full project. Prices are **not** hard-coded — enter the current "
+    "Gemini price yourself from official pricing docs."
+)
+
+e1, e2, e3 = st.columns(3)
+num_videos = e1.number_input("Number of videos", min_value=1, value=450, step=1)
+min_minutes = e2.number_input(
+    "Min avg duration (minutes)", min_value=0.1, value=1.5, step=0.1
+)
+max_minutes = e3.number_input(
+    "Max avg duration (minutes)", min_value=0.1, value=3.0, step=0.1
+)
+
+f1, f2 = st.columns(2)
+price_per_min = f1.number_input(
+    "Price per minute (your currency)", min_value=0.0, value=0.0, step=0.01,
+    help="Enter the verified current Gemini price per minute of video.",
+)
+requests_per_day = f2.number_input(
+    "Requests allowed per day", min_value=1, value=20, step=1
+)
+
+min_total_min = num_videos * min_minutes
+max_total_min = num_videos * max_minutes
+min_days = math.ceil(num_videos / requests_per_day)
+
+g = st.columns(3)
+g[0].metric("Min total duration", f"{min_total_min:,.0f} min")
+g[0].metric("Max total duration", f"{max_total_min:,.0f} min")
+g[1].metric("Min estimated cost", f"{min_total_min * price_per_min:,.2f}")
+g[1].metric("Max estimated cost", f"{max_total_min * price_per_min:,.2f}")
+g[2].metric("Estimated API requests", f"{num_videos:,} (1 per video)")
+g[2].metric(f"Min days @ {requests_per_day}/day", f"{min_days:,}")
+
+st.caption(
+    f"With {num_videos} videos and {requests_per_day} requests/day (one request "
+    f"per video), the mathematical minimum is **{min_days} days**."
+)
