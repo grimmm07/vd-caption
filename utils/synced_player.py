@@ -33,6 +33,7 @@ _TEMPLATE = """
   .scp-video { width: 100%; aspect-ratio: __ASPECT__; height: auto;
                max-height: 70vh; background: #000; border-radius: 8px;
                display: block; }
+  .scp-hint { font-size: 12px; opacity: .6; margin: 6px 2px 0; }
   .scp-now { margin: 10px 0; padding: 14px 16px; min-height: 2.4em;
              background: #14161c; border: 1px solid #2b2f3a; border-radius: 8px;
              font-size: 20px; line-height: 1.35; text-align: center;
@@ -57,10 +58,15 @@ _TEMPLATE = """
   }
 </style>
 <div class="scp-wrap">
-  <video id="scpVideo" class="scp-video" controls playsinline>
+  <video id="scpVideo" class="scp-video" controls playsinline crossorigin="anonymous">
     <source src="data:__MIME__;base64,__B64__" type="__MIME__">
+    <!-- Native WebVTT track: gives the browser's built-in "CC" toggle so the
+         viewer can overlay captions on the video and turn them on/off. -->
+    <track id="scpTrack" kind="captions" srclang="__LANG__" label="Captions"
+           src="data:text/vtt;base64,__VTTB64__">
     Your browser cannot play this video inline.
   </video>
+  <div class="scp-hint">Tip: use the “CC” button in the player to overlay captions on the video.</div>
   <div id="scpNow" class="scp-now"></div>
   <div id="scpList" class="scp-list"></div>
 </div>
@@ -128,6 +134,27 @@ def segments_to_cues(segments: Iterable) -> list[dict]:
     return cues
 
 
+def _vtt_timestamp(seconds: float) -> str:
+    total_ms = int(round(max(0.0, float(seconds)) * 1000))
+    hours, rem = divmod(total_ms, 3_600_000)
+    minutes, rem = divmod(rem, 60_000)
+    secs, millis = divmod(rem, 1000)
+    return f"{hours:02d}:{minutes:02d}:{secs:02d}.{millis:03d}"
+
+
+def cues_to_vtt(cues: list[dict]) -> str:
+    """Build a WebVTT document from normalised ``{start, end, text}`` cues.
+
+    Used for the native ``<track>`` so the browser shows a real CC toggle.
+    """
+    lines = ["WEBVTT", ""]
+    for cue in cues:
+        lines.append(f"{_vtt_timestamp(cue['start'])} --> {_vtt_timestamp(cue['end'])}")
+        lines.append(str(cue["text"]))
+        lines.append("")
+    return "\n".join(lines)
+
+
 def build_synced_player_html(
     video_b64: str,
     mime: str,
@@ -135,20 +162,27 @@ def build_synced_player_html(
     list_height_px: int = 260,
     aspect_ratio: str = "16 / 9",
     max_width: int = PLAYER_MAX_WIDTH,
+    lang: str = "en",
 ) -> str:
     """Return the full HTML for the synced below-video caption player.
 
-    ``list_height_px`` controls how tall the transcript panel is before it
-    starts scrolling. ``aspect_ratio`` is a CSS aspect-ratio (e.g. ``"1920 /
-    1080"``) so the video fills the column with no black bars and lines up with
-    the caption panels. ``max_width`` is the shared column width.
+    Includes a native ``<track>`` (WebVTT embedded as a data URI) so the browser
+    renders its built-in **CC** button — the viewer can overlay captions on the
+    video and toggle them on/off. The below-video panel and transcript list
+    remain as well. ``list_height_px``/``aspect_ratio``/``max_width`` control
+    layout; ``lang`` is the caption BCP-47 language.
     """
+    import base64 as _b64
+
     cues = segments_to_cues(segments)
+    vtt_b64 = _b64.b64encode(cues_to_vtt(cues).encode("utf-8")).decode("ascii")
     return (
         _TEMPLATE.replace("__MIME__", mime)
         .replace("__LISTH__", str(int(list_height_px)))
         .replace("__ASPECT__", aspect_ratio)
         .replace("__MAXW__", str(int(max_width)))
+        .replace("__LANG__", lang or "en")
+        .replace("__VTTB64__", vtt_b64)
         .replace("__SEGS__", json.dumps(cues))
         .replace("__B64__", video_b64)  # last: the largest substitution
     )

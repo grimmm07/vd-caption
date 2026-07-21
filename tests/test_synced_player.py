@@ -4,9 +4,17 @@ from models.transcript import Segment
 from utils.synced_player import (
     INLINE_PLAYABLE,
     build_synced_player_html,
+    cues_to_vtt,
     preview_layout_heights,
     segments_to_cues,
 )
+
+
+def test_cues_to_vtt_format():
+    vtt = cues_to_vtt([{"start": 0.0, "end": 3.2, "text": "Hello."}])
+    assert vtt.startswith("WEBVTT")
+    assert "00:00:00.000 --> 00:00:03.200" in vtt
+    assert "Hello." in vtt
 
 
 def test_segments_to_cues_from_objects():
@@ -38,8 +46,14 @@ def test_build_html_embeds_video_and_cues():
     assert "data:video/mp4;base64,QUJD" in html
     assert "Hello <b>world</b>" in html  # escaped safely at render time in JS
     assert "timeupdate" in html  # sync logic present
+    # native CC toggle: a WebVTT track is embedded
+    assert "kind=\"captions\"" in html
+    assert "data:text/vtt;base64," in html
     # every placeholder filled in
-    for placeholder in ("__B64__", "__SEGS__", "__MIME__", "__LISTH__", "__ASPECT__", "__MAXW__"):
+    for placeholder in (
+        "__B64__", "__SEGS__", "__MIME__", "__LISTH__", "__ASPECT__",
+        "__MAXW__", "__VTTB64__", "__LANG__",
+    ):
         assert placeholder not in html
 
 

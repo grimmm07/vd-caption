@@ -196,10 +196,17 @@ def _render_synced_preview(video_path, edited_df) -> None:
 
     list_h, total_h = preview_layout_heights(len(cues), aspect)
     b64 = base64.b64encode(path.read_bytes()).decode("ascii")
+    lang = (st.session_state.get("language") or "en")[:2]
     html = build_synced_player_html(
-        b64, INLINE_PLAYABLE[ext], cues, list_height_px=list_h, aspect_ratio=aspect_css
+        b64,
+        INLINE_PLAYABLE[ext],
+        cues,
+        list_height_px=list_h,
+        aspect_ratio=aspect_css,
+        lang=lang,
     )
-    components.html(html, height=total_h, scrolling=True)
+    # A little extra height for the CC hint line.
+    components.html(html, height=total_h + 22, scrolling=True)
 
 
 _init_state()
