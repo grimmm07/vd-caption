@@ -51,6 +51,27 @@ def test_soft_subtitle_command_uses_mov_text():
     assert cmd.count("-i") == 2  # video + subtitle inputs
 
 
+def test_soft_subtitle_command_sets_track_metadata():
+    cmd = build_soft_subtitle_command(
+        "ffmpeg", "in.mp4", "c.srt", "out.mp4", language="fre"
+    )
+    joined = " ".join(cmd)
+    assert "language=fre" in joined
+    assert "title=Captions" in joined
+    # Marked default so players are more likely to expose/enable it.
+    assert "-disposition:s:0" in cmd and "default" in cmd
+
+
+def test_iso3_language_mapping():
+    from services.video_service import iso3_language
+
+    assert iso3_language("en") == "eng"
+    assert iso3_language("fr") == "fre"
+    assert iso3_language("eng") == "eng"  # already 3-letter
+    assert iso3_language(None) == "und"
+    assert iso3_language("xx") == "und"  # unknown
+
+
 def test_font_size_scales_with_height():
     assert font_size_for_height(None) == 22
     assert font_size_for_height(480) < font_size_for_height(1080)

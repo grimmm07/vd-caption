@@ -34,6 +34,7 @@ from services.video_service import (
     burn_captions,
     check_ffmpeg,
     font_size_for_height,
+    iso3_language,
     mux_soft_subtitles,
     probe_video,
 )
@@ -521,7 +522,10 @@ if st.session_state.get("segments_df") is not None:
                     out_soft = work / "captioned_soft.mp4"
                     with st.spinner("Muxing selectable subtitle track…"):
                         mux_soft_subtitles(
-                            st.session_state["video_path"], srt_path, out_soft
+                            st.session_state["video_path"],
+                            srt_path,
+                            out_soft,
+                            language=iso3_language(st.session_state.get("language")),
                         )
                     st.session_state["outputs"]["soft"] = str(out_soft)
 
@@ -543,10 +547,16 @@ if outputs:
         st.video(outputs["burned"])
     elif outputs.get("soft"):
         st.video(outputs["soft"])
-        st.caption(
-            "This file has a **selectable** subtitle track. In-browser players "
-            "may not show captions or a toggle — download it and open in VLC / "
-            "QuickTime / your phone to turn captions on or off."
+        st.info(
+            "This file has a **selectable** subtitle track (captions default to "
+            "ON, and the viewer can turn them off). Player support varies:\n\n"
+            "- **VLC / QuickTime / phones / smart TVs** — show the track under "
+            "their Subtitles menu.\n"
+            "- **Windows Media Player** has weak embedded-subtitle support and "
+            "may not list it. If so, use **Subtitles → Choose subtitle file** "
+            "and pick the **`captions.srt`** below, or open the video in VLC.\n"
+            "- **In-browser players (including this preview)** usually don't "
+            "show a caption toggle — download the file to use it."
         )
 
     dl_cols = st.columns(4)

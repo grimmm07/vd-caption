@@ -285,8 +285,16 @@ def build_soft_subtitle_command(
     input_path: str | Path,
     srt_path: str | Path,
     output_path: str | Path,
+    *,
+    language: str = "eng",
 ) -> list[str]:
-    """Build the argv for muxing a *selectable* subtitle track (mov_text)."""
+    """Build the argv for muxing a *selectable* subtitle track (mov_text).
+
+    The track is given a language, a human-readable title, and marked as the
+    default subtitle stream. Those hints help players enumerate and expose the
+    track (Windows Media Player in particular only lists tracks that carry this
+    metadata). Viewers can still toggle it off.
+    """
     return [
         ffmpeg_path,
         "-y",
@@ -303,7 +311,11 @@ def build_soft_subtitle_command(
         "-c:s",
         "mov_text",
         "-metadata:s:s:0",
-        "language=und",
+        f"language={language}",
+        "-metadata:s:s:0",
+        "title=Captions",
+        "-disposition:s:0",
+        "default",
         str(output_path),
     ]
 
@@ -414,13 +426,34 @@ def mux_soft_subtitles(
     input_path: str | Path,
     srt_path: str | Path,
     output_path: str | Path,
+    *,
+    language: str = "eng",
 ) -> Path:
     """Create an MP4 with a selectable (soft) subtitle track."""
     status = check_ffmpeg()
     if not status.ffmpeg_path:
         raise FFmpegError("ffmpeg is not installed or not on PATH")
     cmd = build_soft_subtitle_command(
-        status.ffmpeg_path, input_path, srt_path, output_path
+        status.ffmpeg_path, input_path, srt_path, output_path, language=language
     )
     run_ffmpeg(cmd)
     return Path(output_path)
+
+
+# ISO 639-1 (2-letter) -> ISO 639-2/T (3-letter) for common languages, since
+# MP4 subtitle tracks expect the 3-letter code.
+_LANG_2_TO_3 = {
+    "en": "eng", "fr": "fre", "es": "spa", "de": "ger", "it": "ita",
+    "pt": "por", "nl": "dut", "ar": "ara", "ru": "rus", "zh": "chi",
+    "ja": "jpn", "ko": "kor", "hi": "hin", "tr": "tur", "pl": "pol",
+}
+
+
+def iso3_language(code: str | None) -> str:
+    """Best-effort map a detected language code to a 3-letter MP4 code."""
+    if not code:
+        return "und"
+    code = code.strip().lower()
+    if len(code) == 3:
+        return code
+    return _LANG_2_TO_3.get(code[:2], "und")
